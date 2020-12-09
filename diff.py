@@ -72,6 +72,7 @@ def diff_crates(crate_name: str, versions: list):
         versions_dict[version]["extracted_path"] = versioned_extracted_path
     
 
+    # compare two versions of the same crate from crates.io tar archive
     if len(versions) == 2:
         # get paths
         path1 = versions_dict[versions[0]]["extracted_path"]
@@ -85,19 +86,20 @@ def diff_crates(crate_name: str, versions: list):
         # npm install -g diff2html-cli
 
         # create 'standard' file-name
-        report_file_name = f'{crate_name}.{versions[0]}-{versions[1]}.html'
+        report_file_name = f'{crate_name}.{versions[0]}-{versions[1]}.crates-diff.html'
 
         # diff the two different paths
         ps = subprocess.Popen(["git", "diff", "-u", path1, path2],
                             stdout=subprocess.PIPE)
         
-        with open(f'{crate_name}.{versions[0]}-{versions[1]}.crate.diff', "w") as outfile:
+        with open(f'{crate_name}.{versions[0]}-{versions[1]}.crates.diff', "w") as outfile:
             subprocess.run(["diff", "-r", path1, path2.decode('utf-8')],
                         stdout=outfile)
         # create html of the diff
         subprocess.run(["diff2html", "-s",
                         "line", "-F", report_file_name, "-d", "word", "-i", "stdin", "-o", "preview"], stdin=ps.stdout)
 
+    # just compare a single version diff between git repo and crates.io tar archive
     if len(versions) == 1:
         # download git repo, checkout git version, diff with version path
         git_tmp_dir = tempfile.TemporaryDirectory()
@@ -122,7 +124,7 @@ def diff_crates(crate_name: str, versions: list):
         # diff the two different paths
         ps = subprocess.Popen(["git", "diff", "-u", path1, path2],
                             stdout=subprocess.PIPE)
-        with open(f'{crate_name}.{versions[0]}-crate-git-diff', "w") as outfile:
+        with open(f'{crate_name}.{versions[0]}-crate-git.diff', "w") as outfile:
             subprocess.run(["diff", "-r", path1, path2.decode('utf-8')],
                         stdout=outfile)
 
