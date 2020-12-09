@@ -2,6 +2,7 @@
 
 '''
 diff.py --crate tokio --initial_version 0.2.22 --final_version 0.3.4
+diff.py --crate <crate-name> --diff-repo --version <git-release-tag>
 '''
 
 import argparse
@@ -13,7 +14,8 @@ import requests
 api = "https://crates.io"
 
 
-def diff_crates(crate_name, version1, version2):
+
+def query_crates(crate_name: str):
     # query crates.io
     url = api + "/api/v1/crates/" + crate_name
     r = requests.get(url)
@@ -21,45 +23,77 @@ def diff_crates(crate_name, version1, version2):
         print("couldn't query crates.io")
         return
     result = r.json()
+    return result
 
-    # obtain url for the two versions
-    versions = {}
-    for version in result["versions"]:
-        if version["num"] == version1:
-            versions["version1"] = version["dl_path"]
-        elif version["num"] == version2:
-            versions["version2"] = version["dl_path"]
+def get_download_paths(result, versions, versions_dict: dict = {}):
+    # get download path of crates tar archive
+    for published_crate_version in result["versions"]:
+        for requested_version in versions:
+            if published_crate_version["num"] == requested_version:
+                versions_dict[requested_version] = {"dl_path": published_crate_version["dl_path"]}
 
-    if len(versions) != 2:
-        print("couldn't find versions requested")
+    # check to make sure found a dl_path for each version
+    if len(versions_dict) != len(versions):
+        print("ERROR: couldn't find versions requested")
         print(result["versions"])
         return
 
-    # obtain code for the two versions
+    return versions_dict
+
+def diff_crates(crate_name: str, versions: list):
+    
+    result = query_crates(crate_name)
+
+
+    # obtain repository url from crates api
+
+    git_repo = result["crate"]["repository"]
+
+    # obtain url for the two versions from crates api
+
+
+    versions_dict = get_download_paths(result, versions)
+    # extract code from the downloaded crate tar-archives
 
     temp_dir = tempfile.TemporaryDirectory()
-    subprocess.run(["wget", api + versions["version1"], "-O", "crate1.tar.gz"],
-                   cwd=temp_dir.name)
-    subprocess.run(["wget", api + versions["version2"], "-O", "crate2.tar.gz"],
-                   cwd=temp_dir.name)
-    subprocess.run(["mkdir", "out1"], cwd=temp_dir.name)
-    subprocess.run(["mkdir", "out2"], cwd=temp_dir.name)
-    subprocess.run(["tar", "-xvf", "crate1.tar.gz",
-                    "-C", "out1"], cwd=temp_dir.name)
-    path1 = subprocess.check_output(
-        ["ls -d $PWD/*"], cwd=temp_dir.name + "/out1", shell=True).strip()
-    subprocess.run(["tar", "-xvf", "crate2.tar.gz",
-                    "-C", "out2"], cwd=temp_dir.name)
-    path2 = subprocess.check_output(
-        ["ls -d $PWD/*"], cwd=temp_dir.name + "/out2", shell=True).strip()
+    print(f"temp_dir = {temp_dir}")
+    for version in versions:
+        versioned_tar_archive_name = f"{crate_name}.{version}.tar.gz"
+        versioned_output_dir = f"output_dir_{version}"
+
+        subprocess.run(["wget", api + versions_dict[version]["dl_path"], "-O", versioned_tar_archive_name],
+                    cwd=temp_dir.name)
+        # create output directories
+        subprocess.run(["mkdir", versioned_output_dir], cwd=temp_dir.name)
+
+        subprocess.run(["tar", "-xvf", versioned_tar_archive_name,
+                        "-C", versioned_output_dir], cwd=temp_dir.name)
+
+        # get path of extracted tar-archive
+        versioned_extracted_path = subprocess.check_output(
+            ["ls -d $PWD/*"], cwd=f"{temp_dir.name}/{versioned_output_dir}", shell=True).strip()
+        versions_dict[version]["extracted_path"] = versioned_extracted_path
+    
+
+    # get paths
+    path1 = versions_dict[versions[0]]["extracted_path"]
+    path2 = versions_dict[versions[1]]["extracted_path"]
+
+    # debug
     print(path1)
     print(path2)
 
     # git diff -> html
     # npm install -g diff2html-cli
-    report_file_name = f'{crate_name}.{version1}-{version2}.html'
+
+    # create 'standard' file-name
+    report_file_name = f'{crate_name}.{versions[0]}-{versions[1]}.html'
+
+    # diff the two different paths
     ps = subprocess.Popen(["git", "diff", "-u", path1, path2],
                           stdout=subprocess.PIPE)
+    
+    # create html of the diff
     subprocess.run(["diff2html", "-s",
                     "line", "-F", report_file_name, "-d", "word", "-i", "stdin", "-o", "preview"], stdin=ps.stdout)
 
@@ -79,7 +113,7 @@ def main():
 
     args = parse_args()
     #diff_crates("tokio", "0.2.22", "0.3.4")
-    diff_crates(args.crate, args.initial_version, args.final_version)
+    diff_crates(args.crate, [args.initial_version, args.final_version])
 
 
 if __name__ == "__main__":
