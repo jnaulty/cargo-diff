@@ -10,9 +10,33 @@ import os
 import tempfile
 import subprocess
 import requests
+import json
 
 api = "https://crates.io"
 
+
+# returns a list of dependency changes as strings of the form "package_name old_version new_version"
+def parse_guppy_output(guppy_output_file: str):
+    dep_list = []
+
+    # figure out list of deps that have changed
+    deps = []
+    guppy_output = open(guppy_output_file, "r")
+    guppy_output = json.loads(guppy_output.read())
+    if "target-packages" in guppy_output and "changed" in guppy_output["target-packages"]:
+        deps += guppy_output["target-packages"]["changed"]
+    if "host-packages" in guppy_output and "changed" in guppy_output["host-packages"]:
+        deps += guppy_output["host-packages"]["changed"]
+
+    # for each changes, obtain name and version change
+    for dep in deps:
+        name = dep["name"]
+        old_version = dep["old-version"]
+        new_version = dep["version"]
+        if new_version != old_version:
+            dep_list.append(name + " " + old_version + " " + new_version)
+            # produce the diff files
+            diff_crates(name, [old_version, new_version])
 
 
 def query_crates(crate_name: str):
@@ -25,12 +49,14 @@ def query_crates(crate_name: str):
     result = r.json()
     return result
 
+
 def get_download_paths(result, versions, versions_dict: dict = {}):
     # get download path of crates tar archive
     for published_crate_version in result["versions"]:
         for requested_version in versions:
             if published_crate_version["num"] == requested_version:
-                versions_dict[requested_version] = {"dl_path": published_crate_version["dl_path"]}
+                versions_dict[requested_version] = {
+                    "dl_path": published_crate_version["dl_path"]}
 
     # check to make sure found a dl_path for each version
     if len(versions_dict) != len(versions):
@@ -40,17 +66,17 @@ def get_download_paths(result, versions, versions_dict: dict = {}):
 
     return versions_dict
 
-def diff_crates(crate_name: str, versions: list):
-    
-    result = query_crates(crate_name)
 
+def diff_crates(crate_name: str, versions: list):
+
+    result = query_crates(crate_name)
 
     # obtain repository url from crates api
 
     git_repo = result["crate"]["repository"]
 
     versions_dict = get_download_paths(result, versions)
-    
+
     # extract code from the downloaded crate tar-archives
     temp_dir = tempfile.TemporaryDirectory()
     print(f"temp_dir = {temp_dir}")
@@ -59,7 +85,7 @@ def diff_crates(crate_name: str, versions: list):
         versioned_output_dir = f"output_dir_{version}"
 
         subprocess.run(["wget", api + versions_dict[version]["dl_path"], "-O", versioned_tar_archive_name],
-                    cwd=temp_dir.name)
+                       cwd=temp_dir.name)
         # create output directories
         subprocess.run(["mkdir", versioned_output_dir], cwd=temp_dir.name)
 
@@ -70,7 +96,6 @@ def diff_crates(crate_name: str, versions: list):
         versioned_extracted_path = subprocess.check_output(
             ["ls -d $PWD/*"], cwd=f"{temp_dir.name}/{versioned_output_dir}", shell=True).strip()
         versions_dict[version]["extracted_path"] = versioned_extracted_path
-    
 
     # compare two versions of the same crate from crates.io tar archive
     if len(versions) == 2:
@@ -90,11 +115,11 @@ def diff_crates(crate_name: str, versions: list):
 
         # diff the two different paths
         ps = subprocess.Popen(["git", "diff", "-u", path1, path2],
-                            stdout=subprocess.PIPE)
-        
+                              stdout=subprocess.PIPE)
+
         with open(f'{crate_name}.{versions[0]}-{versions[1]}.crates.diff', "w") as outfile:
             subprocess.run(["diff", "-r", path1, path2.decode('utf-8')],
-                        stdout=outfile)
+                           stdout=outfile)
         # create html of the diff
         subprocess.run(["diff2html", "-s",
                         "line", "-F", report_file_name, "-d", "word", "-i", "stdin", "-o", "preview"], stdin=ps.stdout)
@@ -108,11 +133,14 @@ def diff_crates(crate_name: str, versions: list):
         # if tags were normalized...the following woud work
         #subprocess.run(["git", "clone", "--depth", "1", "--single-branch", "--branch", f"{versions[0]}", git_repo, f"{git_tmp_dir.name}/{crate_name}"])
 
-        subprocess.run(["git", "clone", git_repo, f"{git_tmp_dir.name}/{crate_name}"])
-        tag_name_result = subprocess.run(["git", "tag", "--list", f"*{versions[0]}*"], cwd=f"{git_tmp_dir.name}/{crate_name}", stdout=subprocess.PIPE)
+        subprocess.run(["git", "clone", git_repo,
+                        f"{git_tmp_dir.name}/{crate_name}"])
+        tag_name_result = subprocess.run(
+            ["git", "tag", "--list", f"*{versions[0]}*"], cwd=f"{git_tmp_dir.name}/{crate_name}", stdout=subprocess.PIPE)
         tag_name = tag_name_result.stdout.strip()
         print(f"checking out {tag_name}")
-        subprocess.run(["git", "checkout", tag_name], cwd=f"{git_tmp_dir.name}/{crate_name}")
+        subprocess.run(["git", "checkout", tag_name],
+                       cwd=f"{git_tmp_dir.name}/{crate_name}")
 
         path1 = f"{git_tmp_dir.name}/{crate_name}"
         path2 = versions_dict[versions[0]]["extracted_path"]
@@ -123,12 +151,10 @@ def diff_crates(crate_name: str, versions: list):
 
         # diff the two different paths
         ps = subprocess.Popen(["git", "diff", "-u", path1, path2],
-                            stdout=subprocess.PIPE)
+                              stdout=subprocess.PIPE)
         with open(f'{crate_name}.{versions[0]}-crate-git.diff', "w") as outfile:
             subprocess.run(["diff", "-r", path1, path2.decode('utf-8')],
-                        stdout=outfile)
-
-       
+                           stdout=outfile)
 
         print(ps.stdout)
         # create 'standard' file-name
@@ -139,29 +165,50 @@ def diff_crates(crate_name: str, versions: list):
                         "line", "-F", report_file_name, "-d", "word", "-i", "stdin", "-o", "preview"], stdin=ps.stdout)
 
 
-
 def parse_args():
-    parser = argparse.ArgumentParser(description='Diff to versions of a cargo crate')
-    parser.add_argument('--crate', type=str, dest='crate', required=True,
-                                help='Name of Cargo Crate (e.g., tokio)')
+    parser = argparse.ArgumentParser(
+        description='Diff to versions of a cargo crate')
+
+    group = parser.add_mutually_exclusive_group()
+
+    # analyze guppy-summaries output (multiple crates)
+    group.add_argument('--guppy', type=str, dest='guppy', required=False,
+                       help='guppy-summaries json output')
+
+    # analyze a specific crate
+    group.add_argument('--crate', type=str, dest='crate', required=False,
+                       help='Name of Cargo Crate (e.g., tokio)')
     parser.add_argument('--initial_version', dest='initial_version', required=False,
-                                help='initial version of cargo crate (e.g., 1.0.1)')
+                        help='initial version of cargo crate (e.g., 1.0.1)')
     parser.add_argument('--final_version', dest='final_version', required=False,
-                                help='final version of cargo crate (e.g., 1.0.2)')
+                        help='final version of cargo crate (e.g., 1.0.2)')
     parser.add_argument('--version', dest='version', required=False,
-                                help='version of cargo crate (e.g., 1.0.2)')
+                        help='version of cargo crate (e.g., 1.0.2)')
 
     args = parser.parse_args()
+
+    if args.version and (args.initial_version or args.final_version):
+        parser.error(
+            "can't use --version and --initial/final_version together")
+
+    if bool(args.initial_version) != bool(args.final_version):
+        parser.error(
+            "--initial_version and --final_version must be used together")
+
     return args
+
 
 def main():
 
     args = parse_args()
     #diff_crates("tokio", "0.2.22", "0.3.4")
-    if args.final_version:
-        diff_crates(args.crate, [args.initial_version, args.final_version])
-    if args.version:
-        diff_crates(args.crate, [args.version])
+    if args.guppy:
+        parse_guppy_output(args.guppy)
+    if args.crate:
+        if args.final_version:
+            diff_crates(args.crate, [args.initial_version, args.final_version])
+        elif args.version:
+            diff_crates(args.crate, [args.version])
 
 
 if __name__ == "__main__":
