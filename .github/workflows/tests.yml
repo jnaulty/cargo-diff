@@ -1,0 +1,60 @@
+name: tests
+
+on: pull_request
+
+jobs:
+  run_guppy_tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout this PR
+        uses: actions/checkout@v2
+        with:
+          path: "cargo-diff"
+
+      - name: Checkout diem
+        uses: actions/checkout@v2
+        with:
+          path: "diem1"
+          repository: diem/diem
+          ref: d58bdd6889e58f9e8bdec15e10ce0bf5b1c47af6
+
+      - name: Checkout diem
+        uses: actions/checkout@v2
+        with:
+          path: "diem2"
+          repository: diem/diem
+          ref: 505a6af34be5cc5474acf3fad1030c732cae18fc
+
+      - name: run test
+        run: |
+          set -x
+          set -e
+
+          # generate summaries
+          cd diem1 
+          cargo x generate-summaries
+          cd .. 
+          cd diem2 
+          cargo x generate-summaries
+
+          # output some json
+          cargo x diff-summary ../diem1/target/summaries/summary-release.toml target/summaries/summary-release.toml json > ../guppy_output
+          cat ../guppy_output
+
+          # run cargo-diff
+          cd ../cargo-diff
+          sudo npm install -g diff2html-cli
+          pip3 install requests
+          python3 diff.py --guppy ../guppy_output
+
+          # make sure diffs were created
+          ls
+          [[ -f "serde.1.0.117-1.0.118.crates-diff.html" ]]
+          [[ -f "serde_derive.1.0.117-1.0.118.crates-diff.html" ]]
+          [[ -f "instant.0.1.8-0.1.9.crates-diff.html" ]]
+          [[ -f "libc.0.2.80-0.2.81.crates-diff.html" ]]
+          [[ -f "net2.0.2.35-0.2.37.crates-diff.html" ]]
+          [[ -f "smallvec.1.4.2-1.5.1.crates-diff.html" ]]
+          [[ -f "tinyvec.0.3.4-1.1.0.crates-diff.html" ]]
+          [[ -f "unicode-normalization.0.1.13-0.1.16.crates-diff.html" ]]
