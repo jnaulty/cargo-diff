@@ -1,0 +1,15 @@
+# action.yml
+name: "create diffs from guppy output"
+description: "Create HTML diff files and uploads them"
+inputs:
+  guppy-output:
+    description: "json diff-summary obtained via guppy"
+    required: true
+outputs:
+  files: # id of output
+    description: "HTML diff files"
+runs:
+  using: "docker"
+  image: "Dockerfile"
+  args:
+    - ${{ inputs.guppy-output }}
