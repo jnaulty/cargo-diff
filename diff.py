@@ -15,7 +15,7 @@ import json
 api = "https://crates.io"
 
 
-def parse_guppy_diff(guppy_output_file: str):
+def parse_guppy_diff(guppy_output_file: str, json_output: str):
     # figure out list of deps that have changed
     deps = []
     guppy_output = open(guppy_output_file, "r")
@@ -26,6 +26,7 @@ def parse_guppy_diff(guppy_output_file: str):
         deps += guppy_output["host-packages"]["changed"]
 
     # for each changes, obtain name and version change
+    output_files = []
     for dep in deps:
         name = dep["name"]
 
@@ -48,7 +49,13 @@ def parse_guppy_diff(guppy_output_file: str):
         if new_version != old_version:
             print(f"creating diff for {name} v{old_version} -> v{new_version}")
             # produce the diff files
-            diff_crates(name, [old_version, new_version])
+            report = diff_crates(name, [old_version, new_version])
+            output_files.append(report)
+
+    # write json output to file?
+    if json_output != "":
+        f = open(json_output, "w")
+        f.write(json.dumps(output_files))
 
 
 def query_crates(crate_name: str):
@@ -138,9 +145,10 @@ def diff_crates(crate_name: str, versions: list):
         # create html of the diff
         subprocess.run(["diff2html", "-s",
                         "line", "-F", report_file_name, "-d", "word", "-i", "stdin", "-o", "preview"], stdin=ps.stdout)
+        return report_file_name
 
     # just compare a single version diff between git repo and crates.io tar archive
-    if len(versions) == 1:
+    elif len(versions) == 1:
         # download git repo, checkout git version, diff with version path
         git_tmp_dir = tempfile.TemporaryDirectory()
         subprocess.run(["mkdir", f"{git_tmp_dir.name}/{crate_name}"])
@@ -178,6 +186,7 @@ def diff_crates(crate_name: str, versions: list):
         print("creating diff2html report")
         subprocess.run(["diff2html", "-s",
                         "line", "-F", report_file_name, "-d", "word", "-i", "stdin", "-o", "preview"], stdin=ps.stdout)
+        return report_file_name
 
 
 def parse_args():
@@ -189,6 +198,8 @@ def parse_args():
     # analyze guppy-summaries output (multiple crates)
     group.add_argument('--guppy', type=str, dest='guppy', required=False,
                        help='guppy-summaries json output')
+    parser.add_argument('--json-output', type=str, dest='json_output',
+                        required=False, default="", help='guppy-summaries json output')
 
     # analyze a specific crate
     group.add_argument('--crate', type=str, dest='crate', required=False,
@@ -218,10 +229,11 @@ def main():
     args = parse_args()
     #diff_crates("tokio", "0.2.22", "0.3.4")
     if args.guppy:
-        parse_guppy_diff(args.guppy)
+        parse_guppy_diff(args.guppy, args.json_output)
     if args.crate:
         if args.final_version:
-            diff_crates(args.crate, [args.initial_version, args.final_version])
+            res = diff_crates(
+                args.crate, [args.initial_version, args.final_version])
         elif args.version:
             diff_crates(args.crate, [args.version])
 

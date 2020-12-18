@@ -46,9 +46,12 @@ jobs:
           cd ../cargo-diff
           sudo npm install -g diff2html-cli
           pip3 install requests
-          python3 diff.py --guppy ../guppy_output
+          python3 diff.py --guppy ../guppy_output --json-output files
 
           # make sure diffs were created
+          cat files
+          cat files | jq '.[9]' | grep serde_derive
+
           ls
           [[ -f "serde.1.0.117-1.0.118.crates-diff.html" ]]
           [[ -f "serde_derive.1.0.117-1.0.118.crates-diff.html" ]]
