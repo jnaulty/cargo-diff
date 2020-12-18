@@ -15,10 +15,7 @@ import json
 api = "https://crates.io"
 
 
-# returns a list of dependency changes as strings of the form "package_name old_version new_version"
-def parse_guppy_output(guppy_output_file: str):
-    dep_list = []
-
+def parse_guppy_diff(guppy_output_file: str):
     # figure out list of deps that have changed
     deps = []
     guppy_output = open(guppy_output_file, "r")
@@ -31,10 +28,25 @@ def parse_guppy_output(guppy_output_file: str):
     # for each changes, obtain name and version change
     for dep in deps:
         name = dep["name"]
+
+        # only care about updated dependencies
+        if dep["change"] != "modified":
+            continue
+        # avoid internal dependencies
+        if "workspace-path" in dep:
+            continue
+        # avoid non-version update changes
+        if dep["old-version"] is None:
+            continue
+        # avoid non-crates.io deps
+        if "crates-io" not in dep or dep["crates-io"] != True:
+            print(f"{name} is not hosted on crates.io, skipping")
+            continue
+
         old_version = dep["old-version"]
         new_version = dep["version"]
         if new_version != old_version:
-            dep_list.append(name + " " + old_version + " " + new_version)
+            print(f"creating diff for {name} v{old_version} -> v{new_version}")
             # produce the diff files
             diff_crates(name, [old_version, new_version])
 
@@ -50,19 +62,14 @@ def query_crates(crate_name: str):
     return result
 
 
-def get_download_paths(result, versions, versions_dict: dict = {}):
+def get_download_paths(result, versions):
+    versions_dict = {}
     # get download path of crates tar archive
     for published_crate_version in result["versions"]:
-        for requested_version in versions:
-            if published_crate_version["num"] == requested_version:
-                versions_dict[requested_version] = {
-                    "dl_path": published_crate_version["dl_path"]}
-
-    # check to make sure found a dl_path for each version
-    if len(versions_dict) != len(versions):
-        print("ERROR: couldn't find versions requested")
-        print(result["versions"])
-        return
+        if published_crate_version["num"] in versions:
+            versions_dict[published_crate_version["num"]] = {
+                "dl_path": published_crate_version["dl_path"]
+            }
 
     return versions_dict
 
@@ -76,6 +83,13 @@ def diff_crates(crate_name: str, versions: list):
     git_repo = result["crate"]["repository"]
 
     versions_dict = get_download_paths(result, versions)
+    # check to make sure found a dl_path for each version
+    if len(versions_dict) != len(versions):
+        print("ERROR: couldn't find versions requested")
+        print(versions)
+        print(versions_dict)
+        print(result["versions"])
+        return
 
     # extract code from the downloaded crate tar-archives
     temp_dir = tempfile.TemporaryDirectory()
@@ -86,6 +100,7 @@ def diff_crates(crate_name: str, versions: list):
 
         subprocess.run(["wget", api + versions_dict[version]["dl_path"], "-O", versioned_tar_archive_name],
                        cwd=temp_dir.name)
+
         # create output directories
         subprocess.run(["mkdir", versioned_output_dir], cwd=temp_dir.name)
 
@@ -203,7 +218,7 @@ def main():
     args = parse_args()
     #diff_crates("tokio", "0.2.22", "0.3.4")
     if args.guppy:
-        parse_guppy_output(args.guppy)
+        parse_guppy_diff(args.guppy)
     if args.crate:
         if args.final_version:
             diff_crates(args.crate, [args.initial_version, args.final_version])
