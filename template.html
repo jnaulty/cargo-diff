@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cargo-Diff</title>
+  <!-- diff2html stuff -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.9.0/styles/github.min.css" />
+  <!--diff2html-css-->
+  <!--diff2html-js-ui-->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const targetElement = document.getElementById('diff');
+      const diff2htmlUi = new Diff2HtmlUI(targetElement);
+      //diff2html-fileListToggle
+      //diff2html-synchronisedScroll
+      //diff2html-highlightCode
+    });
+  </script> 
+  <style>
+    body { margin: 0; }
+    .container { max-width: 1024px; margin: auto; }
+    header { background-color:#423535; color: #d6deda; padding: 20px; margin: 0 0 20px; }
+    header h1 { font-family: Arial; max-width: 1024px; margin: auto; }
+    header h1 small { font-size: 15px; font-weight:normal; }
+    header a { color: #d6deda; border-bottom:1px solid #d6deda; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Crate Diff <small>created via <a href="https://github.com/jnaulty/cargo-diff">Cargo diff</a></small></h1>
+  </header>
+  <div class="container">
+    <div id="diff">
+      <!--diff2html-diff-->
+    </div>  
+  </div>
+</body>
+</html>
