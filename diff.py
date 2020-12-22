@@ -144,7 +144,7 @@ def diff_crates(crate_name: str, versions: list):
                            stdout=outfile)
         # create html of the diff
         subprocess.run(["diff2html", "-s",
-                        "line", "-F", report_file_name, "-d", "word", "-i", "stdin", "-o", "preview"], stdin=ps.stdout)
+                        "line", "-F", report_file_name, "-d", "word", "-i", "stdin", "--hwt", "template.html"], stdin=ps.stdout)
         return report_file_name
 
     # just compare a single version diff between git repo and crates.io tar archive
